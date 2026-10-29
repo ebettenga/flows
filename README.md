@@ -50,7 +50,7 @@ outputs: [result.md]
 | `env` | no | names of environment variables that must be set before the run starts |
 | `inputs` | no | the form shown before a run |
 | `steps` | yes | what the run does |
-| `outputs` | no | file names in the run folder, listed with View links after a run |
+| `outputs` | no | files in the run folder (templated) that the run leaves for people: paths, or `{ file, title, chart }` mappings. Shown in the run's Results and Files. See [Outputs and Results](#outputs-and-results) |
 
 ### Inputs
 
@@ -62,9 +62,12 @@ outputs: [result.md]
 | `options` | | `select` only: the choices |
 | `accept` | any | `file` only: allowed extensions, e.g. `[.csv]` |
 | `multiple` | `false` | `file` only: allow several files |
+| `contains` | | `folder` only: files the folder must hold, e.g. `[package.json]`. The hub then lists the folders on this Mac that hold them, by project name, and a run refuses a folder without them |
 | `default` | | prefilled value |
 | `required` | `true` | whether the run can start without it |
 | `help` | | hint text under the field |
+
+In `/flow-chart`, **Choose…** on a `file` input lists files that fit `accept` without browsing: ones you picked for it before, ones earlier runs made (labelled with the workflow and run), and Spotlight's matches on this Mac, newest first, with package folders, virtual environments and build output left out. A search box narrows all three, and **Browse folders** is there for anything else. A `folder` input with `contains:` lists matching projects the same way.
 
 A `file` or `folder` input's value is an absolute path.
 
@@ -75,7 +78,7 @@ Every step has an `id` (snake_case) and a `title`, and **exactly one** kind:
 | Kind | Value | What happens |
 |---|---|---|
 | `run` | shell command | run with `bash -c` in the workflow folder (or `cwd:`); output is streamed |
-| `agent` | `light`, `medium`, `careful`, `heavy` or `fable` | a flow worker of that tier does the task in `prompt:` (required) |
+| `agent` | `light`, `medium`, `careful`, `heavy` or `fable` | a headless Claude with that tier's model and effort does the task in `prompt:` (required), with only what the step allows; see [Agent steps](#agent-steps) |
 | `approve` | question | the run pauses and shows the question with Approve / Reject; Reject fails the step, so what depends on it is skipped. Claude can answer it too when you say so (`decide_step`) |
 | `claude` | prompt | handed to your main Claude session, which reports back when done |
 | `wait` | `{ file: <path> }`, `{ url: <http(s) URL> }` or `{ until: "HH:MM" \| ISO date and time }` | checks every `interval` seconds until the file exists, the URL answers 2xx, or the local time is reached. The value is templated; a relative `file` is in the run folder; `HH:MM` means its next occurrence. The output is what it waited for |
@@ -83,12 +86,13 @@ Every step has an `id` (snake_case) and a `title`, and **exactly one** kind:
 | `python` | inline code, or `{ file, args, interpreter, requirements }` | runs a Python script with no shell; stdout is the output, or what it passes to `flow.set_output(...)`. See [Python steps](#python-steps) |
 | `mcp` | `{ server, tool, args }` | calls a tool on one of your session's MCP servers; the text it returns is the output. See [MCP steps](#mcp-steps) |
 | `http` | `{ method, url, headers, body, expect }` | sends one HTTP request; the response body is the output. See [HTTP steps](#http-steps) |
+| `model` | `{ prompt, files, write, use, max_tokens, effort, system }` | one prompt to Claude with the `files` attached; the answer is the output, and is written to `write`. No agent starts and no tool runs, so it needs no permission (it works in auto mode). For writing and judgment from given text: insights, summaries, classifying. Counts as AI |
 
 Optional step fields:
 
 | Field | Meaning |
 |---|---|
-| `prompt` | the task text for an `agent` step |
+| `prompt` | the task text for an `agent` step (a `model` step has its own under `model:`) |
 | `cwd` | `run` and `python`: working directory; templated |
 | `after` | list of step ids this step waits for. Default: the previous step. `after: []` means it can start right away |
 | `timeout` | `run`, `python`, `mcp`, `http` and `wait`: seconds before the step is stopped and fails. Default 600; 3600 for `wait` |
@@ -144,6 +148,20 @@ Each item runs as its own instance: `{{item}}` (or `{{<as>}}`) is the item and `
 
 ### AI and fixed steps
 
+### Agent steps
+
+An agent step runs its own headless Claude (`claude -p --restricted`), not a subagent of your session, so it never waits on your permission prompts and never gets more than the step gives it:
+
+| Field | Default | What it allows |
+|---|---|---|
+| `tools` | `[Read, Grep, Glob, Write]` | built-in tools from `Read`, `Grep`, `Glob`, `Write`, `Edit`, `WebSearch`, `WebFetch`. Nothing that runs commands or code: put commands in a `run` step before it |
+| `read` | none | folders (templated, e.g. `"{{inputs.repo}}"`) it may read besides the run folder |
+| `write` | none | folders it may write besides the run folder; it always may write the run folder |
+| `budget` | `1` | dollars it may spend before it is stopped (at most 20) |
+| `use`, `effort` | the tier's | a model alias or id, and an effort level, instead of the tier's |
+
+It has no MCP servers and ignores your settings files; anything not allowed up front is refused, not asked. It runs on the Claude account the `claude` command is signed in to: run `claude auth login` once in a terminal. Its log shows each tool it used, what was refused, and what it cost.
+
 `agent` and `claude` steps are **AI**: Claude does them, so they can give different results from run to run and cost usage. Every other kind is **fixed**: it runs the same way every time. The hub shows which is which. Use fixed steps wherever they can do the job, and AI steps only for judgment (summarising, writing prose, deciding). An AI step can later be *hardened*: once a run shows that its work was mechanical, replace it with a `python`, `mcp` or `http` step with the same id and `outputs:` (the `flow-author` skill does this with you).
 
 ### Python steps
@@ -177,6 +195,54 @@ The `flow` helper (standard library only; `.flow/flow.py` in the run folder, on 
 | `flow.run_dir` | the run folder |
 | `flow.item`, `flow.item_index` | in a `for_each` step: the item and its index (`None` otherwise) |
 | `flow.set_output(value)` | makes `value` (anything `json.dumps` takes) the step's output |
+| `flow.chart(name, type="bar", labels=[...], series=[{"name": ..., "values": [...]}], title=None, y_label=None)` | writes `<run dir>/<name>.chart.json` (the name slugged), a chart the hub draws in the run's Results; returns its path. See [Outputs and Results](#outputs-and-results) |
+
+### Outputs and Results
+
+Top-level `outputs:` entries are paths in the run folder (templated, like a step's `outputs:`), or mappings:
+
+```yaml
+outputs:
+  - report.md                                   # a path
+  - file: sales.csv                             # a mapping
+    title: Totals by category                   # optional; default the file name
+    chart: { type: bar, x: category, y: price, agg: sum }
+```
+
+| `chart:` field | Meaning |
+|---|---|
+| `type` | `bar` or `line` (required) |
+| `x` | the column to group by (required) |
+| `y` | a numeric column (`1,234.50` and `$40` count as numbers); empty cells are skipped |
+| `agg` | `sum` (the default with `y`), `mean`, or `count` (the default without `y`; rows per group) |
+| `top` | keep the `n` biggest groups, 1 to 50 (default 12) |
+| `sort` | `value` (biggest first; the default for bars) or `label` (the default for lines, so dates read in order) |
+
+Only a `.csv`, `.tsv` or `.json` output (a JSON array of objects, keys as columns) takes a `chart:`. A wrong field is reported by name (`outputs[1].chart.type: "pie" must be bar or line`). When a run's file can't be charted (no such column, a `y` value that isn't a number), the chart is replaced by a short note such as `chart: no column category`.
+
+The run board's **Results** card shows, in order, each part only when it has something:
+
+1. **Approvals**: every `approve` step: its question, approved / rejected / waiting / not reached, when it was decided, and the note given with the decision. A waiting one has Approve and Reject.
+2. **Summaries**: each Markdown (`.md`) output, rendered (the first 80 lines; View opens the file).
+3. **Charts**: each output with a `chart:`, then each `*.chart.json` file at the top of the run folder.
+4. **Tables**: each CSV/TSV output without a `chart:`: the first 10 rows and 8 columns.
+
+Then **Files** lists every output with a View link. Summaries and tables fold; the first two start open. Results reads files up to 2 MB.
+
+A `*.chart.json` file (what `flow.chart` writes from a python step, or any step can write):
+
+```json
+{ "type": "line", "title": "Sales per day", "labels": ["2026-09-01", "2026-09-02"],
+  "series": [{ "name": "total", "values": [120, 95.5] }], "yLabel": "sum of price" }
+```
+
+`type` is `bar` or `line`; each series has one number per label; two or more series draw as grouped bars or several lines with a legend (at most five). `title` and `yLabel` are optional.
+
+```python
+from flow import flow
+flow.chart("sales by day", "line", labels=days, series=[{"name": "total", "values": totals}], y_label="sum of price")
+# -> <run dir>/sales-by-day.chart.json
+```
 
 ### MCP steps
 

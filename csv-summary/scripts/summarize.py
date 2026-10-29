@@ -6,6 +6,10 @@ Usage: summarize.py <input.csv> <output.md>
 Writes row/column counts, a type guess per column, min/max/mean/median for
 numeric columns and the top 5 values for text columns. Prints a one-line
 summary to stdout. Standard library only.
+
+Charts for the hub's Results (flow.chart, in the run folder):
+- the most varied text column's top 8 values, by row count (bar);
+- with a date column and a numeric column, that number summed per date (line).
 """
 import csv
 import os
@@ -13,6 +17,10 @@ import statistics
 import sys
 from collections import Counter
 from datetime import date
+
+from flow import flow
+
+TOP_VALUES = 8
 
 
 def to_number(value):
@@ -123,11 +131,57 @@ def main(argv):
     with open(dest, "w", encoding="utf-8") as f:
         f.write("\n".join(lines).rstrip() + "\n")
 
+    charts = write_charts(header, rows, columns, types)
+
     print(
         f"{os.path.basename(src)}: {len(rows)} rows, {len(header)} columns "
         f"({len(numeric)} numeric, {len(text)} text) -> {dest}"
+        + (f"; charts: {', '.join(charts)}" if charts else "")
     )
     return 0
+
+
+def whole(x):
+    """3.0 as 3, others to 2 places: what the chart file shows."""
+    return int(x) if float(x).is_integer() else round(x, 2)
+
+
+def write_charts(header, rows, columns, types):
+    """The run's charts (see the module doc); returns the files written."""
+    written = []
+    # A column whose every value differs (an id, a name) says nothing as counts.
+    varied = [n for n in header if types[n] == "text" and 1 < len(set(columns[n])) < len(columns[n])]
+    if varied:
+        name = max(varied, key=lambda n: len(set(columns[n])))
+        top = Counter(columns[name]).most_common(TOP_VALUES)
+        written.append(flow.chart(
+            f"{name} counts", "bar",
+            labels=[value for value, _ in top],
+            series=[{"name": "rows", "values": [count for _, count in top]}],
+            title=f"Rows by {name} (top {len(top)})",
+            y_label="rows",
+        ))
+    dates = [n for n in header if types[n] == "date"]
+    numbers = [n for n in header if types[n] in ("integer", "number") and n.lower() != "id" and not n.lower().endswith("_id")]
+    if dates and numbers:
+        day, num = dates[0], numbers[0]
+        di, ni = header.index(day), header.index(num)
+        totals = {}
+        for row in rows:
+            d = row[di].strip() if di < len(row) else ""
+            v = to_number(row[ni]) if ni < len(row) else None
+            if d and v is not None:
+                totals[d] = totals.get(d, 0) + v
+        days = sorted(totals)
+        if days:
+            written.append(flow.chart(
+                f"{num} by {day}", "line",
+                labels=days,
+                series=[{"name": num, "values": [whole(totals[d]) for d in days]}],
+                title=f"{num} per {day}",
+                y_label=f"sum of {num}",
+            ))
+    return [os.path.basename(p) for p in written]
 
 
 if __name__ == "__main__":

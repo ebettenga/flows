@@ -3,8 +3,13 @@ title: CSV summary
 description: |
   Summarizes a CSV file: row and column counts, a type guess per column,
   numeric stats (min, max, mean, median) and the top values of text columns.
-  A light agent turns the stats into plain-language insights, and after your
+  A model step turns the stats into plain-language insights, and after your
   approval the workflow writes one combined `report.md`.
+
+  Leave the CSV empty and it makes up a random one that fits the report title
+  first: "Weekly golf shop sales" gets orders, "Phoenix weather" gets weather,
+  and so on (orders, weather, web traffic, staff, golf rounds, inventory, or a
+  general set).
 
   Try it with `csv-summary/sample.csv` (golf-shop orders).
 owner: Ethan Bettenga
@@ -14,28 +19,47 @@ inputs:
     label: CSV file
     type: file
     accept: [.csv]
-    required: true
-    help: The first row must be the header.
+    required: false
+    help: The first row must be the header. Leave empty to generate random data from the title.
   - id: title
     label: Report title
     type: text
     default: CSV summary
     required: true
+    help: Also picks the kind of data to generate when no CSV is given.
+  - id: rows
+    label: Rows to generate
+    type: number
+    default: 50
+    required: false
+    help: Only used when no CSV is given.
+  - id: seed
+    label: Seed
+    type: text
+    required: false
+    help: The same seed makes the same random data; empty is different every run.
 steps:
+  - id: prepare
+    title: Use the CSV, or generate one
+    python:
+      file: scripts/prepare.py
+      args: ["{{inputs.csv}}", "{{inputs.title}}", "{{inputs.rows}}", "{{run.dir}}/generated.csv", "{{inputs.seed}}"]
   - id: stats
     title: Compute stats
     python:
       file: scripts/summarize.py
-      args: ["{{inputs.csv}}", "{{run.dir}}/stats.md"]
+      args: ["{{steps.prepare.json.file}}", "{{run.dir}}/stats.md"]
   - id: insights
     title: Write insights
-    agent: light
-    prompt: |
-      Read {{run.dir}}/stats.md (a statistical summary of a CSV file).
-      Write 3 to 6 short, plain-language insights about the data as a
-      markdown bullet list to {{run.dir}}/insights.md, under the heading
-      "## Insights". Only state what the stats support. Do not modify any
-      other file.
+    model:
+      prompt: |
+        The attached file is a statistical summary of a CSV file titled
+        "{{inputs.title}}". Write 3 to 6 short, plain-language insights about
+        the data as a markdown bullet list under the heading "## Insights".
+        Only state what the stats support. Reply with the markdown only.
+      files: ["{{run.dir}}/stats.md"]
+      write: "{{run.dir}}/insights.md"
+      max_tokens: 1200
   - id: approve_report
     title: Approve report
     approve: Write the final report to {{run.dir}}/report.md?
@@ -44,8 +68,16 @@ steps:
     run: |
       {
         printf '# %s\n\n' "$FLOW_INPUT_TITLE"
+        if [ "{{steps.prepare.json.generated}}" = "true" ]; then
+          printf '_Random sample data (%s, %s rows), generated for this report._\n\n' "{{steps.prepare.json.theme}}" "{{steps.prepare.json.rows}}"
+        fi
         cat "{{run.dir}}/insights.md"
         printf '\n\n'
         cat "{{run.dir}}/stats.md"
       } > "{{run.dir}}/report.md"
-outputs: [report.md, stats.md, insights.md]
+outputs:
+  - report.md
+  - stats.md
+  - insights.md
+  # Only the orders data has category and price; other data shows a short note instead of the chart.
+  - { file: generated.csv, title: "Totals by category", chart: { type: bar, x: category, y: price, agg: sum } }

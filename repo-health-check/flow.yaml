@@ -12,6 +12,7 @@ inputs:
   - id: repo
     label: Repository folder
     type: folder
+    contains: [package.json]
     default: ""
     required: true
     help: Root of the repo (holds package.json and server/package.json).
@@ -38,6 +39,10 @@ steps:
     title: Docs audit
     after: [spa_tests, spa_lint, api_tests]
     agent: medium
+    # A headless Claude that can read the repo and write only in the run folder.
+    tools: [Read, Grep, Glob, Write]
+    read: ["{{inputs.repo}}"]
+    budget: 1
     prompt: |
       Read-only task: do not modify any file in {{inputs.repo}}.
       Compare the "scripts" in {{inputs.repo}}/package.json and

@@ -1,0 +1,56 @@
+id: orders-digest
+title: Orders digest
+description: |
+  Picks out the orders you care about (say, every **Apparel** order, or every
+  order shipped to **CA**), runs the **CSV summary** workflow on just those as a
+  child run, then wraps its report in a short digest.
+
+  An example of one workflow using another (`uses:`): the filtering and the
+  digest are fixed Python steps; the only AI is the child's insights step.
+  Try it with `csv-summary/sample.csv`, column `category`, value `Apparel`.
+owner: Ethan Bettenga
+tags: [csv, data, report, example]
+inputs:
+  - id: orders
+    label: Orders CSV
+    type: file
+    accept: [.csv]
+    help: Needs a header row with the column you filter on.
+  - id: column
+    label: Filter on
+    type: select
+    options: [category, state, product]
+    default: category
+  - id: value
+    label: Value to keep
+    type: text
+    default: Apparel
+    help: Matched without regard to case.
+  - id: title
+    label: Digest title
+    type: text
+    default: Orders digest
+steps:
+  - id: filter
+    title: Keep matching orders
+    python:
+      file: scripts/filter.py
+      args: ["{{inputs.orders}}", "{{inputs.column}}", "{{inputs.value}}", "{{run.dir}}/filtered.csv"]
+    outputs: [filtered.csv]
+
+  - id: summary
+    title: Summarize them (CSV summary)
+    if: steps.filter.json.rows > 0
+    uses: csv-summary
+    with:
+      csv: "{{steps.filter.json.file}}"
+      title: "{{inputs.title}}: {{inputs.value}}"
+
+  - id: digest
+    title: Write the digest
+    if: always()
+    python:
+      file: scripts/digest.py
+      args: ["{{run.dir}}/digest.md"]
+    outputs: [digest.md]
+outputs: [digest.md, filtered.csv]
