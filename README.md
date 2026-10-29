@@ -187,8 +187,62 @@ detail:
       rows: { items: orders.items, text: "{{row.status}} · {{row.placed_at | date}}", empty: None open., limit: 15 }
 ```
 
-- **Templates** are `{{path}}` or `{{path | filter}}`. Paths are dotted keys and `[n]` indexes into: `query`, `filter`, `item` (a list row), `key`, `row` (a section row) and each detail call's result by its name. What leads nowhere fills as nothing, and an empty stat shows `—`.
-- **Filters:** `percent` (0.28 or 28 → 28%), `money` (cents → $), `number`, `minutes` (seconds → min), `date`, `datetime`, `join` (`join:", "`), `lower`, `upper`, `yesno`, `default:'text'`.
+### Tabs, ranges, tables, charts and actions
+
+A detail page can grow into a whole admin page:
+
+```yaml
+detail:
+  title: "{{client.name}}"
+  calls:                                    # run when the item opens
+    client: { server: crm, tool: get_client, args: { id: "{{key}}" } }
+  actions:                                  # buttons at the top of the page
+    - id: rename
+      label: Edit
+      style: primary                        # primary, danger or plain
+      fields:                               # a form first; defaults fill from the page
+        - { id: name, label: Name, required: true, default: "{{client.name}}" }
+        - { id: live, label: Live, type: toggle, default: "{{client.live}}" }
+        - { id: tier, label: Tier, type: select, options: [{ value: "1", label: Basic }, { value: "2", label: Pro }] }
+      mcp: { server: crm, tool: update_client, args: { id: "{{key}}", name: "{{form.name}}", live: "{{form.live}}" } }
+      done: "Saved {{form.name}}"
+  sections: []                              # shown above the tabs, on every tab
+  tabs:
+    - id: reporting
+      title: Reporting
+      range: { modes: [week, month, year, ytd], default: month }   # {{range.start}}, {{range.end}}, {{range.label}}
+      calls:                                # run when the tab opens, and on a range change
+        report: { server: crm, tool: report, args: { id: "{{key}}", from: "{{range.start}}", to: "{{range.end}}" } }
+      sections:
+        - title: Topics
+          from: report
+          chart: { items: report.topics, label: "{{row.name}}", value: "{{row.count}}" }
+    - id: admins
+      title: Admins
+      calls:
+        admins: { server: crm, tool: list_admins, args: { id: "{{key}}" } }
+      sections:
+        - title: Admins
+          from: admins
+          table:
+            items: admins
+            columns: [{ label: Email, value: "{{row.email}}" }, { label: Status, value: "{{row.status | words}}" }]
+          row_actions:                      # on each row; {{row}} is in reach
+            - id: remove
+              label: Remove
+              style: danger
+              confirm: "Remove {{row.email}} from {{client.name}}?"
+              mcp: { server: crm, tool: remove_admin, args: { id: "{{key}}", admin: "{{row.id}}" } }
+        - { title: SSO, from: client, pairs: client.sso }   # an object's keys and values
+```
+
+- **Filters** can come in `group:`s: one is on per group, each group's first by default, and the active ones' args all merge into the list call.
+- **`list.paged: true`** adds Previous and Next; `{{page}}` (from 1) goes in the list call's args, and `limit` is the page size.
+- **Actions** are writes: without `fields` or `confirm` they run at once; with `confirm` they ask first; with `fields` they show a form (text, textarea, number, toggle, select, date; `required: true` is checked). Toggles reach the call as booleans and numbers as numbers. After a successful action the page loads again and its `done` text (or "<label>: done") shows at the top.
+- Call names are unique across a page and its tabs, and a tab's sections can read the page's calls and their own tab's.
+
+- **Templates** are `{{path}}` or `{{path | filter}}`. Paths are dotted keys and `[n]` indexes into: `query`, `filter`, `page`, `item` (a list row), `key`, `row` (a section row), `form` (an action's fields), `range` and each detail call's result by its name. What leads nowhere fills as nothing, and an empty stat shows `—`.
+- **Filters:** `percent` (0.28 or 28 → 28%), `money` (cents → $), `number`, `minutes` (seconds → min), `duration` (seconds → h:mm:ss), `date`, `datetime`, `join` (`join:", "`), `count` (a list's length), `lower`, `upper`, `words` (snake_case → Words), `clip:80`, `yesno`, `default:'text'`.
 - **Args:** an arg that is one template keeps its value's type, an arg that fills as nothing is left out (an empty search sends no `search`), and a key of digits reaches a call as a number.
 - A call's answer over 400 kB is shown as an error: have the tool trim it.
 - Ask Claude to look things up in a view: the `list_views` and `open_view` tools open the view in the hub and give Claude what the page shows.
