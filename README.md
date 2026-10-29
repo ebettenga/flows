@@ -149,6 +149,50 @@ Each item runs as its own instance: `{{item}}` (or `{{<as>}}`) is the item and `
 
 ### AI and fixed steps
 
+## Views
+
+A folder can hold a `view.yaml` instead of (or beside) a `flow.yaml`: a **view**, a search, a list and a detail page over MCP tool calls, drawn on the hub's **Views** tab. Use one for looking things up (a customer, an order, a teammate), where a workflow would be a report you run.
+
+```yaml
+title: People
+description: Find someone and see their numbers.
+search: { placeholder: Name or id }
+filters:                                   # buttons over the list; the first is the default
+  - { id: active, label: Active, args: { active: true } }   # args merge into the list call
+  - { id: all, label: Everyone }
+list:
+  mcp: { server: crm, tool: search_people, args: { search: "{{query}}", limit: 50 } }
+  items: people                            # path to the array in the result
+  key: id                                  # path to each item's id: {{key}} on the detail page
+  count: total                             # optional: path to the total
+  title: "{{item.first}} {{item.last}}"
+  subtitle: "#{{item.id}} · {{item.state}}"
+  dot: item.online                         # optional: a green dot when true
+  empty: Nobody matches.
+detail:
+  title: "{{profile.name}}"
+  subtitle: "#{{key}}"
+  calls:                                   # run at once when an item opens; each result by its name
+    profile: { server: crm, tool: get_person, args: { id: "{{key}}" } }
+    orders:  { server: crm, tool: open_orders, args: { person_id: "{{key}}" } }
+  sections:
+    - title: Profile
+      from: profile                        # shows this call's loading and errors
+      stats:
+        - { label: Spent, value: "{{profile.spent_cents | money}}" }
+        - { label: Response rate, value: "{{profile.rate | percent}}" }
+      text: ["{{profile.about}}", "{{profile.tags | join}}"]
+    - title: Open orders
+      from: orders
+      rows: { items: orders.items, text: "{{row.status}} · {{row.placed_at | date}}", empty: None open., limit: 15 }
+```
+
+- **Templates** are `{{path}}` or `{{path | filter}}`. Paths are dotted keys and `[n]` indexes into: `query`, `filter`, `item` (a list row), `key`, `row` (a section row) and each detail call's result by its name. What leads nowhere fills as nothing, and an empty stat shows `—`.
+- **Filters:** `percent` (0.28 or 28 → 28%), `money` (cents → $), `number`, `minutes` (seconds → min), `date`, `datetime`, `join` (`join:", "`), `lower`, `upper`, `yesno`, `default:'text'`.
+- **Args:** an arg that is one template keeps its value's type, an arg that fills as nothing is left out (an empty search sends no `search`), and a key of digits reaches a call as a number.
+- A call's answer over 400 kB is shown as an error: have the tool trim it.
+- Ask Claude to look things up in a view: the `list_views` and `open_view` tools open the view in the hub and give Claude what the page shows.
+
 ## Sources
 
 `flows.yaml` can also list **sources**: other folders of workflows, usually a team's git repo, shown on the Workflows page beside your own.
