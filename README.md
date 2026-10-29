@@ -86,8 +86,9 @@ Optional step fields:
 | `cwd` | `run` only: working directory; templated |
 | `after` | list of step ids this step waits for. Default: the previous step. `after: []` means it can start right away |
 | `timeout` | seconds before the step is stopped and fails |
+| `continue_on_fail` | `true`: a failure is reported, but the steps that wait for this one still run |
 
-Steps whose `after` steps are all done run in parallel, at most 3 at a time. A failing step (non-zero exit, rejected approval, timeout) stops everything that depends on it.
+Steps whose `after` steps are all done run in parallel, at most 3 at a time. A failing step (non-zero exit, rejected approval, timeout) stops everything that depends on it, unless it has `continue_on_fail: true`.
 
 ### Templates
 

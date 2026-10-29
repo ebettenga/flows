@@ -17,16 +17,19 @@ inputs:
     help: Root of the repo (holds package.json and server/package.json).
 steps:
   - id: spa_tests
+    continue_on_fail: true
     title: SPA tests
     after: []
     cwd: "{{inputs.repo}}"
     run: set -o pipefail; npm test 2>&1 | tee "{{run.dir}}/spa_tests.txt"
   - id: spa_lint
+    continue_on_fail: true
     title: SPA lint
     after: []
     cwd: "{{inputs.repo}}"
     run: set -o pipefail; npm run lint 2>&1 | tee "{{run.dir}}/spa_lint.txt"
   - id: api_tests
+    continue_on_fail: true
     title: API tests
     after: []
     cwd: "{{inputs.repo}}/server"
