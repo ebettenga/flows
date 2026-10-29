@@ -242,7 +242,7 @@ detail:
 - Call names are unique across a page and its tabs, and a tab's sections can read the page's calls and their own tab's.
 
 - **Templates** are `{{path}}` or `{{path | filter}}`. Paths are dotted keys and `[n]` indexes into: `query`, `filter`, `page`, `item` (a list row), `key`, `row` (a section row), `form` (an action's fields), `range` and each detail call's result by its name. What leads nowhere fills as nothing, and an empty stat shows `—`.
-- **Filters:** `percent` (0.28 or 28 → 28%), `money` (cents → $), `number`, `minutes` (seconds → min), `duration` (seconds → h:mm:ss), `date`, `datetime`, `join` (`join:", "`), `count` (a list's length), `lower`, `upper`, `words` (snake_case → Words), `clip:80`, `yesno`, `default:'text'`.
+- **Filters:** `percent` (0.28 or 28 → 28%), `money` (cents → $), `number`, `minutes` (seconds → min), `duration` (seconds → h:mm:ss), `date`, `datetime`, `join` (`join:", "`), `count` (a list's length), `lower`, `upper`, `words` (snake_case → Words), `clip:80`, `map:'3=Approved,7=Ungraded'` (a label per value), `yesno`, `default:'text'`.
 - **Args:** an arg that is one template keeps its value's type, an arg that fills as nothing is left out (an empty search sends no `search`), and a key of digits reaches a call as a number.
 - A call's answer over 400 kB is shown as an error: have the tool trim it.
 - Ask Claude to look things up in a view: the `list_views` and `open_view` tools open the view in the hub and give Claude what the page shows.
