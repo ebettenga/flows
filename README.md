@@ -149,6 +149,33 @@ Each item runs as its own instance: `{{item}}` (or `{{<as>}}`) is the item and `
 
 ### AI and fixed steps
 
+## Sources
+
+`flows.yaml` can also list **sources**: other folders of workflows, usually a team's git repo, shown on the Workflows page beside your own.
+
+```yaml
+sources:
+  - name: team                    # kebab-case; required
+    title: Team                   # shown on the page; default the name
+    git: git@gitlab.com:example-org/flows.git
+    branch: main                  # optional
+    path: ~/Documents/repos/team-flows   # optional; default ~/.flow/sources/<name>
+```
+
+| Field | Meaning |
+|---|---|
+| `name` | kebab-case id of the source |
+| `title` | its name on the Workflows page; default the name |
+| `git` | clone URL. A source with `git` that is not on this Mac yet is cloned when the hub next loads |
+| `branch` | the branch to clone; default the repo's own |
+| `path` | where it lives; default `~/.flow/sources/<name>`. Point it at a checkout of your own to edit the source's workflows there. A `path` with no `git` is a plain folder |
+
+Each source is a folder of workflow folders, like this one, and may have its own `flows.yaml` with groups. On the Workflows page your groups come first; then each source's groups, titled `<source title> · <group>`; then the rest of that source's workflows under its title; then Other. Put a source's workflow in one of your groups and it shows there instead. Arrange mode does not rename or move a source's groups: change those in its repo.
+
+**Pull** on the Workflows page (or the `pull_sources` tool: ask Claude to pull the flow sources) clones the sources that are missing and fast-forwards the rest. A pull that fails, such as no access or a branch that has diverged, is listed under flows.yaml's problems.
+
+Workflow ids must be unique across your folder, the sources and the project's `.flows/`. A workflow whose `mcp` steps call a server that no Claude Code config on this Mac sets up (`~/.claude.json` or the project's `.mcp.json`) is refused before it starts, naming the server and pointing at its source's README.
+
 ## Groups and order
 
 `flows.yaml` at the root of this folder sets how the Workflows page in `/flow-chart` groups and orders the workflows:
@@ -158,7 +185,7 @@ groups:
   - title: Reports
     workflows: [orders-digest, csv-summary]
   - title: Code
-    workflows: [repo-health-check]
+    workflows: [orders-digest]
 ```
 
 Groups show in this order, and their workflows in the listed order. A workflow no group lists goes under **Other**, at the end. To change it from the hub, press **Arrange**:
@@ -363,5 +390,4 @@ Run steps read it as `$NAME`. Python, MCP and HTTP steps use `{{env.NAME}}` (onl
 
 ## Examples
 
-- [`repo-health-check`](repo-health-check/): runs the MWA, PWA, Switchboard and backend unit tests on `develop` in parallel, puts each repo back on its own branch, and writes one summary with a Python step (`if: always()`, so it comes even when tests fail).
 - [`csv-summary`](csv-summary/): stats for a CSV (a python step), plain-language insights (an agent), an approval gate, and a combined report. Try it with `csv-summary/sample.csv`.
