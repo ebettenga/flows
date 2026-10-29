@@ -363,5 +363,5 @@ Run steps read it as `$NAME`. Python, MCP and HTTP steps use `{{env.NAME}}` (onl
 
 ## Examples
 
-- [`repo-health-check`](repo-health-check/): parallel tests and lint for a repo, a docs audit by an agent, and a summary from your Claude session (`if: always()`, so it comes even when the audit fails).
+- [`repo-health-check`](repo-health-check/): runs the MWA, PWA, Switchboard and backend unit tests on `develop` in parallel, puts each repo back on its own branch, and writes one summary with a Python step (`if: always()`, so it comes even when tests fail).
 - [`csv-summary`](csv-summary/): stats for a CSV (a python step), plain-language insights (an agent), an approval gate, and a combined report. Try it with `csv-summary/sample.csv`.

@@ -1,69 +1,101 @@
 id: repo-health-check
 title: Repo health check
 description: |
-  Runs the SPA unit tests, SPA lint and API tests of a repo in parallel,
-  then has an agent audit the docs against the `package.json` scripts and
-  asks your Claude session for a summary.
+  Runs the unit tests of MWA, PWA, Switchboard and the backend on their
+  develop branches, all at once, and writes one pass/fail summary.
 
-  Read-only for the repo. It **never runs e2e tests** (`npm run test:e2e*`).
+  Each repo is switched to an up-to-date develop for its tests and put back on
+  its own branch afterwards. A repo with uncommitted changes is skipped, not
+  touched. The backend runs its migrations and unit tests on a throwaway CI
+  database, never your dev one. It **never runs e2e tests**.
 owner: Ethan Bettenga
-tags: [repo, tests, lint, docs]
+tags: [repo, tests, frontend, backend]
+# Leave a folder blank to use the repo under ~/Documents/repos, found by its
+# usual names (see each step's second argument).
 inputs:
-  - id: repo
-    label: Repository folder
+  - id: mwa
+    label: MWA repo (frontend-app)
     type: folder
+    required: false
+    contains: [frontend/web-app/package.json]
+    help: Blank uses ~/Documents/repos/frontend-app or ~/Documents/repos/frontend.
+  - id: pwa
+    label: PWA repo (listener-web-app)
+    type: folder
+    required: false
     contains: [package.json]
-    default: ""
-    required: true
-    help: Root of the repo (holds package.json and server/package.json).
+    help: Blank uses ~/Documents/repos/listener-web-app or ~/Documents/repos/pwa.
+  - id: switchboard
+    label: Switchboard repo
+    type: folder
+    required: false
+    contains: [frontend/switch-board/package.json]
+    help: Blank uses ~/Documents/repos/switchboard.
+  - id: backend
+    label: Backend repo (web-application)
+    type: folder
+    required: false
+    contains: [Makefile, alembic.ini]
+    help: Blank uses ~/Documents/repos/web-application or ~/Documents/repos/backend. Its Docker stack is started if it isn't running.
+# CI=true and --watchAll=false make react-scripts run once and exit. It is called
+# directly rather than through yarn: the repos' .npmrc needs
+# COMPONENT_LIB_ACCESS_KEY, which only installs need.
 steps:
-  - id: spa_tests
-    continue_on_fail: true
-    title: SPA tests
+  - id: mwa
+    title: MWA tests
     after: []
-    cwd: "{{inputs.repo}}"
-    run: set -o pipefail; npm test 2>&1 | tee "{{run.dir}}/spa_tests.txt"
-  - id: spa_lint
     continue_on_fail: true
-    title: SPA lint
+    timeout: 1200
+    run: |
+      set -o pipefail
+      ./scripts/on-develop.sh {{inputs.mwa | sh}} "frontend-app frontend" frontend/web-app \
+        env CI=true ./node_modules/.bin/react-scripts test --watchAll=false --json --outputFile="$FLOW_RUN_DIR/mwa.json" \
+        2>&1 | tee "$FLOW_RUN_DIR/mwa.txt"
+  - id: pwa
+    title: PWA tests
     after: []
-    cwd: "{{inputs.repo}}"
-    run: set -o pipefail; npm run lint 2>&1 | tee "{{run.dir}}/spa_lint.txt"
-  - id: api_tests
     continue_on_fail: true
-    title: API tests
+    timeout: 1200
+    run: |
+      set -o pipefail
+      ./scripts/on-develop.sh {{inputs.pwa | sh}} "listener-web-app pwa" . \
+        env CI=true ./node_modules/.bin/react-scripts test --watchAll=false --json --outputFile="$FLOW_RUN_DIR/pwa.json" \
+        2>&1 | tee "$FLOW_RUN_DIR/pwa.txt"
+  - id: switchboard
+    title: Switchboard tests
     after: []
-    cwd: "{{inputs.repo}}/server"
-    run: set -o pipefail; npm test 2>&1 | tee "{{run.dir}}/api_tests.txt"
-  - id: docs_audit
-    title: Docs audit
-    after: [spa_tests, spa_lint, api_tests]
-    agent: medium
-    # A headless Claude that can read the repo and write only in the run folder.
-    tools: [Read, Grep, Glob, Write]
-    read: ["{{inputs.repo}}"]
-    budget: 1
-    prompt: |
-      Read-only task: do not modify any file in {{inputs.repo}}.
-      Compare the "scripts" in {{inputs.repo}}/package.json and
-      {{inputs.repo}}/server/package.json against what
-      {{inputs.repo}}/README.md, {{inputs.repo}}/CLAUDE.md and
-      {{inputs.repo}}/server/README.md say about commands.
-      List (1) scripts that no doc mentions and (2) contradictions, such as
-      a documented command that does not exist or is described wrongly.
-      Cite the file for each finding. Write the result as markdown to
-      {{run.dir}}/docs-audit.md and answer with a one-paragraph summary.
+    continue_on_fail: true
+    timeout: 1200
+    run: |
+      set -o pipefail
+      ./scripts/on-develop.sh {{inputs.switchboard | sh}} "switchboard" frontend/switch-board \
+        env CI=true ./node_modules/.bin/react-scripts test --watchAll=false --json --outputFile="$FLOW_RUN_DIR/switchboard.json" \
+        2>&1 | tee "$FLOW_RUN_DIR/switchboard.txt"
+  - id: backend
+    title: Backend migrations and tests
+    after: []
+    continue_on_fail: true
+    timeout: 2400
+    # ci-test-unit builds the application_ci database from the committed fixtures,
+    # runs `alembic upgrade head` on it, then the unit suite, exactly as CI does.
+    # Your dev database is never migrated, so a feature-branch migration in it
+    # can't break the run. backend-tests.sh also gives it memcached, as CI does.
+    run: |
+      set -o pipefail
+      ./scripts/on-develop.sh {{inputs.backend | sh}} "web-application backend" . \
+        "$PWD/scripts/backend-tests.sh" \
+        2>&1 | tee "$FLOW_RUN_DIR/backend.txt"
   - id: summary
     title: Summary
-    after: [docs_audit]
-    # Runs even when the docs audit failed or was skipped.
+    after: [mwa, pwa, switchboard, backend]
     if: always()
-    claude: |
-      Read-only for the repo {{inputs.repo}}: do not change it.
-      Read {{run.dir}}/spa_tests.txt, {{run.dir}}/spa_lint.txt,
-      {{run.dir}}/api_tests.txt and, if it exists, {{run.dir}}/docs-audit.md
-      (the docs audit may have failed: say so). Write
-      {{run.dir}}/summary.md: pass/fail and counts for tests and lint,
-      any failures with the file and message, and the main docs-audit
-      findings. Report back when it is written.
-outputs: [summary.md, docs-audit.md, spa_tests.txt, spa_lint.txt, api_tests.txt]
+    python:
+      file: scripts/summarize.py
+      args:
+        - "{{run.dir}}/summary.md"
+        - "MWA|jest|{{run.dir}}/mwa.json|{{run.dir}}/mwa.txt|frontend/web-app"
+        - "PWA|jest|{{run.dir}}/pwa.json|{{run.dir}}/pwa.txt|."
+        - "Switchboard|jest|{{run.dir}}/switchboard.json|{{run.dir}}/switchboard.txt|frontend/switch-board"
+        - "Backend|pytest||{{run.dir}}/backend.txt|."
+    outputs: [summary.md]
+outputs: [summary.md]
