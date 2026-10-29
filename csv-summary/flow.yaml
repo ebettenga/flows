@@ -1,0 +1,49 @@
+id: csv-summary
+title: CSV summary
+description: |
+  Summarizes a CSV file: row and column counts, a type guess per column,
+  numeric stats (min, max, mean, median) and the top values of text columns.
+  A light agent turns the stats into plain-language insights, and after your
+  approval the workflow writes one combined `report.md`.
+
+  Try it with `csv-summary/sample.csv` (golf-shop orders).
+owner: Ethan Bettenga
+tags: [csv, data, report]
+inputs:
+  - id: csv
+    label: CSV file
+    type: file
+    accept: [.csv]
+    required: true
+    help: The first row must be the header.
+  - id: title
+    label: Report title
+    type: text
+    default: CSV summary
+    required: true
+steps:
+  - id: stats
+    title: Compute stats
+    run: python3 scripts/summarize.py "{{inputs.csv}}" "{{run.dir}}/stats.md"
+  - id: insights
+    title: Write insights
+    agent: light
+    prompt: |
+      Read {{run.dir}}/stats.md (a statistical summary of a CSV file).
+      Write 3 to 6 short, plain-language insights about the data as a
+      markdown bullet list to {{run.dir}}/insights.md, under the heading
+      "## Insights". Only state what the stats support. Do not modify any
+      other file.
+  - id: approve_report
+    title: Approve report
+    approve: Write the final report to {{run.dir}}/report.md?
+  - id: report
+    title: Write report
+    run: |
+      {
+        printf '# %s\n\n' "$FLOW_INPUT_TITLE"
+        cat "{{run.dir}}/insights.md"
+        printf '\n\n'
+        cat "{{run.dir}}/stats.md"
+      } > "{{run.dir}}/report.md"
+outputs: [report.md, stats.md, insights.md]

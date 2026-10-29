@@ -1,0 +1,58 @@
+id: repo-health-check
+title: Repo health check
+description: |
+  Runs the SPA unit tests, SPA lint and API tests of a repo in parallel,
+  then has an agent audit the docs against the `package.json` scripts and
+  asks your Claude session for a summary.
+
+  Read-only for the repo. It **never runs e2e tests** (`npm run test:e2e*`).
+owner: Ethan Bettenga
+tags: [repo, tests, lint, docs]
+inputs:
+  - id: repo
+    label: Repository folder
+    type: folder
+    default: ""
+    required: true
+    help: Root of the repo (holds package.json and server/package.json).
+steps:
+  - id: spa_tests
+    title: SPA tests
+    after: []
+    cwd: "{{inputs.repo}}"
+    run: set -o pipefail; npm test 2>&1 | tee "{{run.dir}}/spa_tests.txt"
+  - id: spa_lint
+    title: SPA lint
+    after: []
+    cwd: "{{inputs.repo}}"
+    run: set -o pipefail; npm run lint 2>&1 | tee "{{run.dir}}/spa_lint.txt"
+  - id: api_tests
+    title: API tests
+    after: []
+    cwd: "{{inputs.repo}}/server"
+    run: set -o pipefail; npm test 2>&1 | tee "{{run.dir}}/api_tests.txt"
+  - id: docs_audit
+    title: Docs audit
+    after: [spa_tests, spa_lint, api_tests]
+    agent: medium
+    prompt: |
+      Read-only task: do not modify any file in {{inputs.repo}}.
+      Compare the "scripts" in {{inputs.repo}}/package.json and
+      {{inputs.repo}}/server/package.json against what
+      {{inputs.repo}}/README.md, {{inputs.repo}}/CLAUDE.md and
+      {{inputs.repo}}/server/README.md say about commands.
+      List (1) scripts that no doc mentions and (2) contradictions, such as
+      a documented command that does not exist or is described wrongly.
+      Cite the file for each finding. Write the result as markdown to
+      {{run.dir}}/docs-audit.md and answer with a one-paragraph summary.
+  - id: summary
+    title: Summary
+    after: [docs_audit]
+    claude: |
+      Read-only for the repo {{inputs.repo}}: do not change it.
+      Read {{run.dir}}/spa_tests.txt, {{run.dir}}/spa_lint.txt,
+      {{run.dir}}/api_tests.txt and {{run.dir}}/docs-audit.md. Write
+      {{run.dir}}/summary.md: pass/fail and counts for tests and lint,
+      any failures with the file and message, and the main docs-audit
+      findings. Report back when it is written.
+outputs: [summary.md, docs-audit.md, spa_tests.txt, spa_lint.txt, api_tests.txt]
