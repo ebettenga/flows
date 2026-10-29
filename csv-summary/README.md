@@ -2,7 +2,7 @@
 
 Pick a CSV file and a title. The workflow:
 
-1. `stats`: `scripts/summarize.py` writes `stats.md` (row/column counts, a type guess per column, min/max/mean/median for numeric columns, top 5 values for text columns) and prints a one-line summary.
+1. `stats` (a python step): `scripts/summarize.py` writes `stats.md` (row/column counts, a type guess per column, min/max/mean/median for numeric columns, top 5 values for text columns) and prints a one-line summary.
 2. `insights`: a light agent reads `stats.md` and writes 3-6 plain-language insights to `insights.md`.
 3. `approve_report`: you approve or reject writing the report.
 4. `report`: combines the title, `insights.md` and `stats.md` into `report.md`.

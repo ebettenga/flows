@@ -2,14 +2,14 @@
 
 Workflows for **flow**, the Claude Code workflow hub. Each folder in this repo is one workflow the hub can list, show and run.
 
-A workflow is a small YAML file describing a form (inputs) and a list of steps. Steps can be shell commands, flow agents, approval gates, prompts handed to your main Claude session, waits (for a file, a URL or a time), or other workflows run as child runs. Steps can be conditional (`if:`), retried, repeated over a list of items (`for_each:`), and required to leave files behind (`outputs:`). The hub fills in the form, runs the steps in order (or in parallel where allowed), streams output, and saves everything the run produces in its own folder.
+A workflow is a small YAML file describing a form (inputs) and a list of steps. Steps can be shell commands, Python scripts, MCP tool calls, HTTP requests, flow agents, approval gates, prompts handed to your main Claude session, waits (for a file, a URL or a time), or other workflows run as child runs. Steps can be conditional (`if:`), retried, repeated over a list of items (`for_each:`), and required to leave files behind (`outputs:`). The hub fills in the form, runs the steps in order (or in parallel where allowed), streams output, and saves everything the run produces in its own folder.
 
 ## Layout
 
 ```
 <id>/
   flow.yaml      # required: the workflow definition
-  scripts/       # optional: helper scripts used by run steps
+  scripts/       # optional: helper scripts used by run and python steps
   README.md      # optional: longer notes for humans
 ```
 
@@ -80,27 +80,30 @@ Every step has an `id` (snake_case) and a `title`, and **exactly one** kind:
 | `claude` | prompt | handed to your main Claude session, which reports back when done |
 | `wait` | `{ file: <path> }`, `{ url: <http(s) URL> }` or `{ until: "HH:MM" \| ISO date and time }` | checks every `interval` seconds until the file exists, the URL answers 2xx, or the local time is reached. The value is templated; a relative `file` is in the run folder; `HH:MM` means its next occurrence. The output is what it waited for |
 | `uses` | a workflow id | runs that workflow as a child run, with `with:` as its inputs. The step goes until the child run ends: done if the child is done, failed otherwise. Its output is the child's run id and folder |
+| `python` | inline code, or `{ file, args, interpreter, requirements }` | runs a Python script with no shell; stdout is the output, or what it passes to `flow.set_output(...)`. See [Python steps](#python-steps) |
+| `mcp` | `{ server, tool, args }` | calls a tool on one of your session's MCP servers; the text it returns is the output. See [MCP steps](#mcp-steps) |
+| `http` | `{ method, url, headers, body, expect }` | sends one HTTP request; the response body is the output. See [HTTP steps](#http-steps) |
 
 Optional step fields:
 
 | Field | Meaning |
 |---|---|
 | `prompt` | the task text for an `agent` step |
-| `cwd` | `run` only: working directory; templated |
+| `cwd` | `run` and `python`: working directory; templated |
 | `after` | list of step ids this step waits for. Default: the previous step. `after: []` means it can start right away |
-| `timeout` | `run` and `wait`: seconds before the step is stopped and fails. Default 600; 3600 for `wait` |
+| `timeout` | `run`, `python`, `mcp`, `http` and `wait`: seconds before the step is stopped and fails. Default 600; 3600 for `wait` |
 | `continue_on_fail` | `true`: a failure is reported, but the steps that wait for this one still run |
 | `if` | a condition (see [Conditions](#conditions)), checked once the `after` steps have ended. False: the step is skipped, and the steps that wait for it still run |
-| `retry` | `run` and `agent`: how many times to try again after a failed attempt (0 to 5; a timeout counts as a failed attempt). Default 0 |
+| `retry` | `run`, `agent`, `python`, `mcp` and `http`: how many times to try again after a failed attempt (0 to 5; a timeout counts as a failed attempt). Default 0 |
 | `retry_delay` | seconds between a failed attempt and the next. Default 10 |
 | `outputs` | files (relative to the run folder, templated) the step must leave: once it otherwise succeeds, a missing one fails it with `missing output <path>` |
-| `for_each` | `run` and `agent`: a list, or a template that gives items separated by newlines or commas (`"{{inputs.clients}}"`). The step runs once per item; see [for_each](#for_each) |
+| `for_each` | `run`, `agent`, `python`, `mcp` and `http`: a list, or a template that gives items separated by newlines or commas (`"{{inputs.clients}}"`). The step runs once per item; see [for_each](#for_each) |
 | `as` | `for_each` only: the item's template name. Default `item` |
 | `max_parallel` | `for_each` only: how many items run at once. Default 3 |
 | `interval` | `wait` only (beside `wait:` or inside it): seconds between checks. Default 15 |
 | `with` | `uses` only: the child workflow's inputs, `<input id>: <value>`; values are templated |
 
-Steps whose `after` steps are all done run in parallel, at most 6 `run` and `agent` steps (or `for_each` items) at a time; approvals, `claude`, `wait` and `uses` steps don't count. A failing step (non-zero exit, rejected approval, timeout, missing output, failed child run) stops everything that depends on it, unless it has `continue_on_fail: true` or the step after it has an `if:` with `always()` or `failure()`.
+Steps whose `after` steps are all done run in parallel, at most 6 `run`, `agent`, `python`, `mcp` and `http` steps (or `for_each` items) at a time; approvals, `claude`, `wait` and `uses` steps don't count. A failing step (non-zero exit, rejected approval, timeout, missing output, failed child run, an MCP error, an unexpected HTTP status) stops everything that depends on it, unless it has `continue_on_fail: true` or the step after it has an `if:` with `always()` or `failure()`.
 
 ### Conditions
 
@@ -108,7 +111,7 @@ Steps whose `after` steps are all done run in parallel, at most 6 `run` and `age
 
 | Part | Examples |
 |---|---|
-| references | `inputs.<id>`, `steps.<id>.status` (`pending`, `running`, `waiting`, `done`, `failed`, `skipped`, `cancelled`, `interrupted`), `steps.<id>.output`, `steps.<id>.exit` (the exit code, or empty) |
+| references | `inputs.<id>`, `steps.<id>.status` (`pending`, `running`, `waiting`, `done`, `failed`, `skipped`, `cancelled`, `interrupted`), `steps.<id>.output`, `steps.<id>.exit` (the exit code, or empty), `steps.<id>.json.<path>` (see [JSON paths](#json-paths)) |
 | values | `'text'` or `"text"`, numbers, `true`, `false` |
 | comparisons | `==` `!=` `<` `<=` `>` `>=` (as numbers when both sides are numbers, else as text) |
 | logic | `&&`, `\|\|`, `!`, parentheses |
@@ -139,6 +142,72 @@ Each item runs as its own instance: `{{item}}` (or `{{<as>}}`) is the item and `
     run: ./report.sh {{client | sh}} > "$FLOW_RUN_DIR/{{item_index}}.md"
 ```
 
+### AI and fixed steps
+
+`agent` and `claude` steps are **AI**: Claude does them, so they can give different results from run to run and cost usage. Every other kind is **fixed**: it runs the same way every time. The hub shows which is which. Use fixed steps wherever they can do the job, and AI steps only for judgment (summarising, writing prose, deciding). An AI step can later be *hardened*: once a run shows that its work was mechanical, replace it with a `python`, `mcp` or `http` step with the same id and `outputs:` (the `flow-author` skill does this with you).
+
+### Python steps
+
+```yaml
+  - id: stats
+    python:
+      file: scripts/summarize.py        # relative to the workflow folder, or absolute
+      args: ["{{inputs.csv}}", "--out", "{{run.dir}}/stats.md"]
+      interpreter: .venv/bin/python     # optional; default python3; relative to the workflow folder
+      requirements: [pandas]            # optional: import names checked before it runs
+  - id: total
+    python: |                           # inline code instead of file:
+      from flow import flow
+      orders = flow.steps["fetch"].json["orders"]
+      flow.set_output({"total": sum(o["total"] for o in orders)})
+```
+
+- The step runs `[interpreter, file, ...args]` in the workflow folder (or `cwd:`), with **no shell**: each arg is passed as written, spaces and quotes included, so no `| sh` is needed. `args` is a list, or one string split like a shell line (`--title "{{inputs.title}}" --top 5`); templates are filled in each arg after splitting.
+- Inline code (a string, or `code:` in the mapping) is saved as `.flow/<step>.py` in the run folder and run the same way. It is not templated: read values through `flow`.
+- `requirements:` are checked first with `<interpreter> -c "import <name>"`; a missing one fails the step with `missing Python package <name> (install it into <interpreter>)`.
+- The output is stdout, trimmed, unless the script calls `flow.set_output(value)`: then it is that value as JSON. stdout and stderr both go to the log.
+- Python steps get the same `FLOW_*` variables as run steps, and `retry`, `timeout`, `for_each`, `outputs`, `if` and `continue_on_fail` work as for run steps.
+
+The `flow` helper (standard library only; `.flow/flow.py` in the run folder, on `PYTHONPATH`):
+
+| Name | Value |
+|---|---|
+| `flow.inputs` | the run's inputs, a dict of strings |
+| `flow.steps["<id>"]` | a step as it was when this one started: `.status`, `.output`, `.json` (the output parsed as JSON, or `None`), `.files` (its `outputs:` as absolute paths), `.dir`, `.exit` |
+| `flow.run_dir` | the run folder |
+| `flow.item`, `flow.item_index` | in a `for_each` step: the item and its index (`None` otherwise) |
+| `flow.set_output(value)` | makes `value` (anything `json.dumps` takes) the step's output |
+
+### MCP steps
+
+```yaml
+  - id: orders
+    mcp:
+      server: shopify                   # the server's name, as /mcp lists it
+      tool: list-orders                 # the tool's name on that server
+      args: { since: "{{inputs.week}}", limit: 50 }
+```
+
+Calls the tool with your session's own connection to that server. Every string in `args`, however deep, is templated; numbers and booleans stay as written. The output is the text the tool returns (its text blocks joined), so when that text is JSON, `{{steps.orders.json.<path>}}` works on it. A tool that reports an error, or a call that fails, fails the step with the message.
+
+### HTTP steps
+
+```yaml
+  - id: fetch
+    http:
+      method: GET                       # default GET
+      url: "https://api.example.com/orders?since={{inputs.week}}"
+      headers: { Authorization: "Bearer {{env.SHOP_TOKEN}}" }
+      body: { week: "{{inputs.week}}" } # a mapping is sent as JSON (content-type application/json); or a string
+      expect: [200, 201]                # default: any 2xx
+```
+
+The output is the response body, trimmed. A status not in `expect` fails the step; the error gives the status and the start of the body.
+
+### JSON paths
+
+When a step's output is JSON, `{{steps.<id>.json.<path>}}` picks a value out of it: dotted keys and `[n]` indexes, as in `{{steps.fetch.json.orders[0].total}}`, or `{{steps.fetch.json}}` for all of it. Objects and arrays fill in as JSON text, other values as text, and a path that leads nowhere (or an output that is not JSON) as nothing. The same paths work in `if:`, where numbers compare as numbers: `if: steps.fetch.json.count > 0`.
+
 ### Child workflows (`uses`)
 
 ```yaml
@@ -162,7 +231,9 @@ Usable in any string value:
 | `{{steps.<id>.files}}` | the step's `outputs:` as absolute paths, one per line |
 | `{{steps.<id>.dir}}` | the run folder; for a `uses` step, the child run's folder |
 | `{{run.dir}}` | this run's own output folder |
+| `{{steps.<id>.json.<path>}}` | a value from a step's JSON output (see [JSON paths](#json-paths)) |
 | `{{item}}`, `{{<as>}}`, `{{item_index}}` | in a `for_each` step: the item and its index |
+| `{{env.<NAME>}}` | in `python` args, `mcp` args and `http` url, headers and body only: an environment variable listed under `env:` (see [Secrets](#secrets)) |
 
 Filters go after a `|`, on any template:
 
@@ -173,7 +244,7 @@ Filters go after a `|`, on any template:
 
 **In `run:` steps, never put a bare `"{{inputs.x}}"` in the command for a value a person types**: a `"` or `$(...)` in the value would be run as shell. Use `{{inputs.x | sh}}` (no quotes around it), or the environment variable: `"$FLOW_INPUT_X"`.
 
-### Environment for run steps
+### Environment for run and python steps
 
 | Variable | Value |
 |---|---|
@@ -187,21 +258,23 @@ Plus anything listed under `env:`, which the hub checks is set before starting.
 
 ## Runs
 
-Each run is saved in `~/.flow/runs/<workflow>/<timestamp>/`. That folder is `{{run.dir}}`: write anything you want to keep there, and name the useful files in `outputs:`. Each step's log is `<step>.log` there (`<step>[<i>].log` for `for_each` items); retries are noted in the log.
+Each run is saved in `~/.flow/runs/<workflow>/<timestamp>/`. That folder is `{{run.dir}}`: write anything you want to keep there, and name the useful files in `outputs:`. Each step's log is `<step>.log` there (`<step>[<i>].log` for `for_each` items); retries are noted in the log. Python steps keep their helper, context and inline code in `.flow/` there.
 
 ## Secrets
 
 Never put a secret in a workflow. List the variable's **name** under `env:` and set its value in your shell or the hub's environment. The file is shared and committed; values are not.
 
+Run steps read it as `$NAME`. Python, MCP and HTTP steps use `{{env.NAME}}` (only for names listed under `env:`; anywhere else it is an error). The value is read when the step runs, and wherever it would show up in a log, a step's output or an error it is replaced with `***`.
+
 ## Adding a workflow
 
 1. Make a folder named after the new id (kebab-case).
 2. Write `flow.yaml` using the reference above. Start by copying one of the examples.
-3. Put helper scripts in `scripts/` and call them with paths relative to the workflow folder (run steps start there).
+3. Put helper scripts in `scripts/` and call them with paths relative to the workflow folder (run and python steps start there). Prefer fixed steps; use `agent` or `claude` only where judgment is needed.
 4. Add a short `README.md` saying what it does and what it needs.
-5. Check it parses and every `after` id exists, then commit.
+5. Check it with `validate_workflow` (ask Claude, or the `flow-author` skill), then commit.
 
 ## Examples
 
 - [`repo-health-check`](repo-health-check/): parallel tests and lint for a repo, a docs audit by an agent, and a summary from your Claude session (`if: always()`, so it comes even when the audit fails).
-- [`csv-summary`](csv-summary/): stats for a CSV, plain-language insights, an approval gate, and a combined report. Try it with `csv-summary/sample.csv`.
+- [`csv-summary`](csv-summary/): stats for a CSV (a python step), plain-language insights (an agent), an approval gate, and a combined report. Try it with `csv-summary/sample.csv`.

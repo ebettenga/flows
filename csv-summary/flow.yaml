@@ -24,7 +24,9 @@ inputs:
 steps:
   - id: stats
     title: Compute stats
-    run: python3 scripts/summarize.py {{inputs.csv | sh}} "$FLOW_RUN_DIR/stats.md"
+    python:
+      file: scripts/summarize.py
+      args: ["{{inputs.csv}}", "{{run.dir}}/stats.md"]
   - id: insights
     title: Write insights
     agent: light
