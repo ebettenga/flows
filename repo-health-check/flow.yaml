@@ -51,10 +51,13 @@ steps:
   - id: summary
     title: Summary
     after: [docs_audit]
+    # Runs even when the docs audit failed or was skipped.
+    if: always()
     claude: |
       Read-only for the repo {{inputs.repo}}: do not change it.
       Read {{run.dir}}/spa_tests.txt, {{run.dir}}/spa_lint.txt,
-      {{run.dir}}/api_tests.txt and {{run.dir}}/docs-audit.md. Write
+      {{run.dir}}/api_tests.txt and, if it exists, {{run.dir}}/docs-audit.md
+      (the docs audit may have failed: say so). Write
       {{run.dir}}/summary.md: pass/fail and counts for tests and lint,
       any failures with the file and message, and the main docs-audit
       findings. Report back when it is written.
