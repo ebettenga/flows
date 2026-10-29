@@ -1,0 +1,131 @@
+id: drive-orders-report
+title: Drive orders report
+description: |
+  Finds the newest CSV in a Google Drive folder, works out the totals
+  (revenue, orders, units, average order) by category, state and product,
+  emails a summary to the people you pick, and saves the calculations to
+  another Drive folder.
+
+  The test folders are on your personal Drive: `flow-test/incoming` holds the
+  CSVs and `flow-test/reports` gets the results. The CSV needs `product`,
+  `category`, `quantity` and `price` columns (`state` and `date` are used
+  when present).
+
+  The recipient list remembers every address a run uses.
+
+  **Sending** goes through the gee-sweet MCP server (mcp-gee-sweet, with
+  Gmail), signed in as you. The email is also saved to `email.md` and to
+  Drive with the report.
+owner: Ethan Bettenga
+tags: [google-drive, gmail, email, report, test]
+inputs:
+  - id: recipients
+    label: Email to
+    type: select
+    multiple: true
+    remember: true
+    help: Pick any you've used before, or type a new address and press Enter.
+  - id: incoming
+    label: Drive folder with the CSVs
+    type: text
+    default: 1xQiLfZp5LQDeVwRLbkpYHzA9m1xG51Tj
+    help: The folder's id (flow-test/incoming), from its Drive URL.
+  - id: reports
+    label: Drive folder for the results
+    type: text
+    default: 16GaASy58VsyC5TV4rwWRV52x8PVPLn5Q
+    help: The folder's id (flow-test/reports).
+  - id: account
+    label: Google account
+    type: select
+    options: [ethan, sundayrolls]
+    default: ethan
+steps:
+  - id: find_csv
+    title: Find the newest CSV
+    mcp:
+      server: google-drive
+      tool: search
+      args:
+        account: "{{inputs.account}}"
+        query: "'{{inputs.incoming}}' in parents and name contains '.csv' and trashed = false"
+        rawQuery: true
+        orderBy: modifiedTime desc
+        pageSize: 1
+  - id: pick
+    title: Read which file it is
+    python:
+      file: scripts/pick_latest.py
+  - id: download
+    title: Download it
+    mcp:
+      server: google-drive
+      tool: downloadFile
+      args:
+        account: "{{inputs.account}}"
+        fileId: "{{steps.pick.json.id}}"
+        localPath: "{{run.dir}}/source.csv"
+        overwrite: true
+  - id: calculate
+    title: Work out the totals
+    python:
+      file: scripts/calculate.py
+      args: ["{{run.dir}}/source.csv", "{{run.dir}}", "{{steps.pick.json.name}}"]
+  - id: compose
+    title: Write the email
+    python:
+      file: scripts/compose_email.py
+      args: ["{{run.dir}}/email.md"]
+  - id: approve_send
+    title: Approve email and upload
+    approve: |
+      Email "{{steps.compose.json.subject}}" to {{steps.compose.json.to}},
+      and save the calculations to the reports folder on Drive?
+  - id: send_email
+    title: Send the email
+    after: [approve_send]
+    mcp:
+      server: gee-sweet
+      tool: send_message
+      args:
+        to: "{{steps.compose.json.to}}"
+        subject: "{{steps.compose.json.subject}}"
+        body: "{{steps.compose.json.body}}"
+  - id: upload_csv
+    title: Save calculations.csv to Drive
+    after: [approve_send]
+    mcp:
+      server: google-drive
+      tool: uploadFile
+      args:
+        account: "{{inputs.account}}"
+        localPath: "{{run.dir}}/calculations.csv"
+        name: "{{steps.calculate.json.base}}-calculations.csv"
+        parentFolderId: "{{inputs.reports}}"
+  - id: upload_report
+    title: Save the report to Drive
+    after: [approve_send]
+    mcp:
+      server: google-drive
+      tool: uploadFile
+      args:
+        account: "{{inputs.account}}"
+        localPath: "{{run.dir}}/report.md"
+        name: "{{steps.calculate.json.base}}-report.md"
+        parentFolderId: "{{inputs.reports}}"
+  - id: upload_email
+    title: Save the email to Drive
+    after: [approve_send]
+    mcp:
+      server: google-drive
+      tool: uploadFile
+      args:
+        account: "{{inputs.account}}"
+        localPath: "{{run.dir}}/email.md"
+        name: "{{steps.calculate.json.base}}-email.md"
+        parentFolderId: "{{inputs.reports}}"
+outputs:
+  - report.md
+  - email.md
+  - calculations.csv
+  - source.csv

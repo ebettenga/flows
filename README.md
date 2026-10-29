@@ -59,9 +59,10 @@ outputs: [result.md]
 | `id` | (required) | snake_case |
 | `label` | the id | text shown on the form |
 | `type` | (required) | `text`, `textarea`, `number`, `boolean`, `date`, `select`, `file`, `folder` |
-| `options` | | `select` only: the choices |
+| `options` | | `select` only: the choices (optional with `remember`) |
 | `accept` | any | `file` only: allowed extensions, e.g. `[.csv]` |
-| `multiple` | `false` | `file` only: allow several files |
+| `multiple` | `false` | `file`: allow several files. `select`: pick any number of values, shown as toggles. Several values come through one per line |
+| `remember` | `false` | `select` only: also offer every value earlier runs used, and take new ones typed in, e.g. a list of email recipients that grows as you use it |
 | `contains` | | `folder` only: files the folder must hold, e.g. `[package.json]`. The hub then lists the folders on this Mac that hold them, by project name, and a run refuses a folder without them |
 | `default` | | prefilled value |
 | `required` | `true` | whether the run can start without it |
