@@ -148,6 +148,26 @@ Each item runs as its own instance: `{{item}}` (or `{{<as>}}`) is the item and `
 
 ### AI and fixed steps
 
+## Groups and order
+
+`flows.yaml` at the root of this folder sets how the Workflows page in `/flow-chart` groups and orders the workflows:
+
+```yaml
+groups:
+  - title: Reports
+    workflows: [orders-digest, csv-summary]
+  - title: Code
+    workflows: [repo-health-check]
+```
+
+Groups show in this order, and their workflows in the listed order. A workflow no group lists goes under **Other**, at the end. To change it from the hub, press **Arrange**:
+- **↑ ↓** on a card move it within its group.
+- A card's group menu moves it to another group or to Other.
+- On a group's title line you can rename it, move it up or down, or remove it. Removing a group puts its workflows back in Other.
+- **New group** adds one.
+
+Each change is saved here, so commit `flows.yaml` along with the workflows. Folding a group shut only affects your own view.
+
 ### Agent steps
 
 An agent step runs its own headless Claude (`claude -p --restricted`), not a subagent of your session, so it never waits on your permission prompts and never gets more than the step gives it:
