@@ -1,4 +1,4 @@
-# How /flow-chart groups and orders the workflows. Workflows no group lists come last, under Other.
+# How /flow groups and orders the workflows. Workflows no group lists come last, under Other.
 groups:
   - title: Reports
     workflows: [orders-digest, csv-summary, drive-orders-report]
