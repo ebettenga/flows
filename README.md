@@ -51,7 +51,6 @@ outputs: [result.md]
 | `inputs` | no | the form shown before a run |
 | `steps` | yes | what the run does |
 | `outputs` | no | files in the run folder (templated) that the run leaves for people: paths, or `{ file, title, chart }` mappings. Shown in the run's Results and Files. See [Outputs and Results](#outputs-and-results) |
-| `flow.button(label, url, note="", group="")` | adds a button to `<run dir>/buttons.json`, drawn in the run's Results under its group; a press opens `url`, a `jamfselfservice:` link (a Jamf Self Service policy) or an `https:` page, and nothing else. See [Buttons](#buttons) |
 
 ### Inputs
 
@@ -370,10 +369,9 @@ Only a `.csv`, `.tsv` or `.json` output (a JSON array of objects, keys as column
 The run board's **Results** card shows, in order, each part only when it has something:
 
 1. **Approvals**: every `approve` step: its question, approved / rejected / waiting / not reached, when it was decided, and the note given with the decision. A waiting one has Approve and Reject.
-2. **Buttons**: what the run wrote to `buttons.json`, under each group's heading (see [Buttons](#buttons)).
-3. **Summaries**: each Markdown (`.md`) output, rendered (the first 80 lines; View opens the file).
-4. **Charts**: each output with a `chart:`, then each `*.chart.json` file at the top of the run folder.
-5. **Tables**: each CSV/TSV output without a `chart:`: the first 10 rows and 8 columns.
+2. **Summaries**: each Markdown (`.md`) output, rendered (the first 80 lines; View opens the file).
+3. **Charts**: each output with a `chart:`, then each `*.chart.json` file at the top of the run folder.
+4. **Tables**: each CSV/TSV output without a `chart:`: the first 10 rows and 8 columns.
 
 Then **Files** lists every output with a View link. Summaries and tables fold; the first two start open. Results reads files up to 2 MB.
 
@@ -390,23 +388,6 @@ A `*.chart.json` file (what `flow.chart` writes from a python step, or any step 
 from flow import flow
 flow.chart("sales by day", "line", labels=days, series=[{"name": "total", "values": totals}], y_label="sum of price")
 # -> <run dir>/sales-by-day.chart.json
-```
-
-#### Buttons
-
-`buttons.json` at the top of the run folder (what `flow.button` writes, or any step can write) is a list of buttons:
-
-```json
-[{ "label": "Install Docker Desktop", "url": "jamfselfservice://content?entity=policy&id=12&action=execute",
-   "note": "Needed by the repo health check", "group": "Optional" }]
-```
-
-Each draws as a button (its `label`) with the `note` beside it, under a heading per `group` in the order the groups first appear (`Actions` for none). A press opens `url` with macOS `open`: only `jamfselfservice:`/`selfservice:` links, which run a Jamf Self Service policy so Jamf does the install, and `https:` pages. Any other link is left out with a note, and at most 40 buttons draw.
-
-```python
-from flow import flow
-flow.button("Install Docker Desktop", "jamfselfservice://content?entity=policy&id=12&action=execute",
-            note="Needed by the repo health check", group="Optional")
 ```
 
 ### MCP steps
