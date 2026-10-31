@@ -316,7 +316,7 @@ Each change is saved here, so commit `flows.yaml` along with the workflows. Fold
 
 ### Hiding workflows
 
-**Hide** on a workflow's card moves it to the **Hidden** section at the bottom of the Workflows page, which stays folded until you open it. **Unhide** there puts it back. What you hide is yours: it is kept in the flow plugin's store, not in `flows.yaml`, so it never changes anyone else's page. A search still finds hidden workflows.
+**Hide** on a workflow's card moves it to the **Hidden** section at the bottom of the Workflows page, which stays folded until you open it. **Unhide** there puts it back. What you hide is yours: it is kept in the flow plugin's store, not in `flows.yaml`, so it never changes anyone else's page. A search still finds hidden workflows. A group whose workflows are all hidden drops off the page with them, and comes back with the first one shown again; a group with nothing in it yet still shows. **Arrange** shows every workflow in its group, hidden or not.
 
 A workflow can also hide itself with `hide_when:`, a condition on its latest finished run. The setup check uses `hide_when: steps.check.json.all_ok`, so it drops out of the way once every check passes and comes back when one fails. A workflow hidden this way has no **Unhide**: it comes back by itself when a later run no longer meets the condition, and you can still open and run it from the Hidden section.
 
