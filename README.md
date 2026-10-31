@@ -48,6 +48,7 @@ outputs: [result.md]
 | `owner` | yes | who maintains it |
 | `tags` | no | list of strings for filtering |
 | `env` | no | names of environment variables that must be set before the run starts |
+| `locals` | no | values each person sets for themselves, such as a repo folder or an AWS profile name. See [Locals](#locals) |
 | `inputs` | no | the form shown before a run |
 | `steps` | yes | what the run does |
 | `outputs` | no | files in the run folder (templated) that the run leaves for people: paths, or `{ file, title, chart }` mappings. Shown in the run's Results and Files. See [Outputs and Results](#outputs-and-results) |
@@ -91,6 +92,40 @@ A `text` input with `search:` asks an MCP tool for matches as you type, and list
 ```
 
 `{{query}}` is the text typed, and an arg that fills as nothing is left out. In auto mode the tool needs an allow rule, as in [MCP steps](#mcp-steps).
+
+### Locals
+
+Some values differ from person to person: where a repo is checked out, what an AWS profile is called. Don't hard-code them, and don't make everyone type them into the form each run. Declare them under `locals:`, and each person sets them once:
+
+```yaml
+locals:
+  - id: backend_repo
+    label: Backend repo (web-application)
+    type: folder
+    help: Your checkout of web-application.
+    default: ~/Documents/repos/web-application
+steps:
+  - run: ./scripts/test.sh {{local.backend_repo | sh}}
+```
+
+| Field | Default | Meaning |
+|---|---|---|
+| `id` | (required) | snake_case; the key in `~/.flow/locals.yaml` |
+| `label` | the id | the name shown in Your settings and in problems |
+| `type` | `text` | `text`, `folder` or `file` |
+| `help` | | hint text under the field in Your settings |
+| `default` | | the value used when the person has not set one. No templates |
+
+Each person's values live in `~/.flow/locals.yaml` on their Mac: a flat `id: value` map shared by every workflow, never in a workflow's repo. Set them in **Your settings** on the hub, or ask Claude ("set my backend_repo to ~/code/backend"). Two workflows that declare the same id share the value.
+
+When a run starts, each local is the person's value, else its `default`. A `folder` or `file` local has a leading `~` expanded to the home folder. The run is refused, nothing started, when:
+
+- a local has neither: `<label> is not set: set "<id>" in Your settings (~/.flow/locals.yaml)`
+- a `folder` or `file` local names a path that doesn't exist: `<label>: <path> does not exist`
+
+Use them as `{{local.<id>}}` anywhere `{{inputs.<id>}}` works, filters included (`{{local.backend_repo | sh}}` in a `run:` command), and in an input's `default:` (`default: "{{local.backend_repo}}/app"`). Conditions (`if:`, `hide_when:`) can use `local.<id>`. Python steps read them as `flow.locals`, a dict. Every `{{local.x}}` and `local.x` must name a local the workflow declares.
+
+Locals are not for secrets: tokens and keys stay under [`env:`](#secrets).
 
 ### Steps
 
@@ -136,7 +171,7 @@ Steps whose `after` steps are all done run in parallel, at most 6 `run`, `agent`
 
 | Part | Examples |
 |---|---|
-| references | `inputs.<id>`, `steps.<id>.status` (`pending`, `running`, `waiting`, `done`, `failed`, `skipped`, `cancelled`, `interrupted`), `steps.<id>.output`, `steps.<id>.exit` (the exit code, or empty), `steps.<id>.json.<path>` (see [JSON paths](#json-paths)) |
+| references | `inputs.<id>`, `local.<id>` (see [Locals](#locals)), `steps.<id>.status` (`pending`, `running`, `waiting`, `done`, `failed`, `skipped`, `cancelled`, `interrupted`), `steps.<id>.output`, `steps.<id>.exit` (the exit code, or empty), `steps.<id>.json.<path>` (see [JSON paths](#json-paths)) |
 | values | `'text'` or `"text"`, numbers, `true`, `false` |
 | comparisons | `==` `!=` `<` `<=` `>` `>=` (as numbers when both sides are numbers, else as text) |
 | logic | `&&`, `\|\|`, `!`, parentheses |
@@ -294,6 +329,15 @@ Each source is a folder of workflow folders, like this one, and may have its own
 
 Workflow ids must be unique across your folder, the sources and the project's `.flows/`. A workflow whose `mcp` steps call a server that no Claude Code config on this Mac sets up (`~/.claude.json` or the project's `.mcp.json`) is refused before it starts, naming the server and pointing at its source's README.
 
+## Sharing changes
+
+For a workflow folder or source that is a git repo, the Workflows page shows its sync line: what's **new from others**, what you've **changed**, and what's **waiting to merge**.
+
+- **Pulling** happens on its own when a session starts, and the hub checks for news every few minutes. Press **Pull** to bring others' changes in now. It rebases, so your own edits are kept.
+- **Share** sends your changes. First it checks them: every workflow must load, nothing may hard-code a personal path like `/Users/<name>/` (use a [local](#locals)), and nothing may look like a secret. Then it opens a merge request (on GitLab) that merges on its own once its checks pass.
+
+Your changes stay on your Mac while that happens, and the sync line shows the MR until it lands.
+
 ## Groups and order
 
 `flows.yaml` at the root of this folder sets how the Workflows page in `/flowboard` groups and orders the workflows:
@@ -363,6 +407,7 @@ The `flow` helper (standard library only; `.flow/flow.py` in the run folder, on 
 | Name | Value |
 |---|---|
 | `flow.inputs` | the run's inputs, a dict of strings |
+| `flow.locals` | the run's locals (see [Locals](#locals)), a dict of strings |
 | `flow.steps["<id>"]` | a step as it was when this one started: `.status`, `.output`, `.json` (the output parsed as JSON, or `None`), `.files` (its `outputs:` as absolute paths), `.dir`, `.exit` |
 | `flow.run_dir` | the run folder |
 | `flow.item`, `flow.item_index` | in a `for_each` step: the item and its index (`None` otherwise) |
@@ -465,6 +510,7 @@ Usable in any string value:
 | Template | Value |
 |---|---|
 | `{{inputs.<id>}}` | the input's value |
+| `{{local.<id>}}` | the person's value for a local the workflow declares (see [Locals](#locals)) |
 | `{{steps.<id>.output}}` | a `run` step's stdout, trimmed; an `agent` step's answer (a done step's; empty otherwise) |
 | `{{steps.<id>.files}}` | the step's `outputs:` as absolute paths, one per line |
 | `{{steps.<id>.dir}}` | the run folder; for a `uses` step, the child run's folder |
@@ -510,7 +556,8 @@ Run steps read it as `$NAME`. Python, MCP and HTTP steps use `{{env.NAME}}` (onl
 2. Write `flow.yaml` using the reference above. Start by copying one of the examples.
 3. Put helper scripts in `scripts/` and call them with paths relative to the workflow folder (run and python steps start there). Prefer fixed steps; use `agent` or `claude` only where judgment is needed.
 4. Add a short `README.md` saying what it does and what it needs.
-5. Check it with `validate_workflow` (ask Claude, or the `flow-author` skill), then commit.
+5. Check it with `validate_workflow` (ask Claude, or the `flow-author` skill). Anything that differs per person goes under `locals:`, never a path like `/Users/<name>/`.
+6. In a git-backed folder or source, press **Share** (see [Sharing changes](#sharing-changes)); otherwise commit it.
 
 ## Examples
 
