@@ -67,10 +67,29 @@ outputs: [result.md]
 | `default` | | prefilled value |
 | `required` | `true` | whether the run can start without it |
 | `help` | | hint text under the field |
+| `search` | | `text` only: suggestions from an MCP tool as you type; see below |
 
 In `/flow-board`, **Choose…** on a `file` input lists files that fit `accept` without browsing: ones you picked for it before, ones earlier runs made (labelled with the workflow and run), and Spotlight's matches on this Mac, newest first, with package folders, virtual environments and build output left out. A search box narrows all three, and **Browse folders** is there for anything else. A `folder` input with `contains:` lists matching projects the same way.
 
 A `file` or `folder` input's value is an absolute path.
+
+A `text` input with `search:` asks an MCP tool for matches as you type, and lists them under the field. Picking one puts its `value` in the input and shows its `title`; typing again drops the pick, and text that no match fills runs as typed. The call and the templates are written like a view's list:
+
+```yaml
+  - id: client
+    label: Client
+    type: text
+    search:
+      mcp: { server: kindly-human, tool: admin_search_clients, args: { search: "{{query}}", limit: 10 } }
+      items: clients                   # path to the list in the result
+      value: "{{item.id}}"             # what a pick puts in the input
+      title: "{{item.name}}"           # each match's line (default: value)
+      subtitle: "#{{item.id}} · {{item.status}}"   # optional, dimmer
+      min: 2                           # letters typed before it searches (default 2)
+      limit: 10                        # matches shown (default 10)
+```
+
+`{{query}}` is the text typed, and an arg that fills as nothing is left out. In auto mode the tool needs an allow rule, as in [MCP steps](#mcp-steps).
 
 ### Steps
 
