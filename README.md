@@ -69,7 +69,7 @@ outputs: [result.md]
 | `help` | | hint text under the field |
 | `search` | | `text` only: suggestions from an MCP tool as you type; see below |
 
-In `/workflow`, **Choose…** on a `file` input lists files that fit `accept` without browsing: ones you picked for it before, ones earlier runs made (labelled with the workflow and run), and Spotlight's matches on this Mac, newest first, with package folders, virtual environments and build output left out. A search box narrows all three, and **Browse folders** is there for anything else. A `folder` input with `contains:` lists matching projects the same way.
+In `/flowboard`, **Choose…** on a `file` input lists files that fit `accept` without browsing: ones you picked for it before, ones earlier runs made (labelled with the workflow and run), and Spotlight's matches on this Mac, newest first, with package folders, virtual environments and build output left out. A search box narrows all three, and **Browse folders** is there for anything else. A `folder` input with `contains:` lists matching projects the same way.
 
 A `file` or `folder` input's value is an absolute path.
 
@@ -295,7 +295,7 @@ Workflow ids must be unique across your folder, the sources and the project's `.
 
 ## Groups and order
 
-`flows.yaml` at the root of this folder sets how the Workflows page in `/workflow` groups and orders the workflows:
+`flows.yaml` at the root of this folder sets how the Workflows page in `/flowboard` groups and orders the workflows:
 
 ```yaml
 groups:
