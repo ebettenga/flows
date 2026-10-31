@@ -51,6 +51,7 @@ outputs: [result.md]
 | `inputs` | no | the form shown before a run |
 | `steps` | yes | what the run does |
 | `outputs` | no | files in the run folder (templated) that the run leaves for people: paths, or `{ file, title, chart }` mappings. Shown in the run's Results and Files. See [Outputs and Results](#outputs-and-results) |
+| `hide_when` | no | a condition, in `if:` syntax, on the latest finished run. While it holds, the workflow sits in the Workflows page's **Hidden** section; it comes back as soon as a run no longer meets it. Example: `hide_when: steps.check.json.all_ok`. See [Hiding workflows](#hiding-workflows) |
 
 ### Inputs
 
@@ -312,6 +313,12 @@ Groups show in this order, and their workflows in the listed order. A workflow n
 - **New group** adds one.
 
 Each change is saved here, so commit `flows.yaml` along with the workflows. Folding a group shut only affects your own view.
+
+### Hiding workflows
+
+**Hide** on a workflow's card moves it to the **Hidden** section at the bottom of the Workflows page, which stays folded until you open it. **Unhide** there puts it back. What you hide is yours: it is kept in the flow plugin's store, not in `flows.yaml`, so it never changes anyone else's page. A search still finds hidden workflows.
+
+A workflow can also hide itself with `hide_when:`, a condition on its latest finished run. The setup check uses `hide_when: steps.check.json.all_ok`, so it drops out of the way once every check passes and comes back when one fails. A workflow hidden this way has no **Unhide**: it comes back by itself when a later run no longer meets the condition, and you can still open and run it from the Hidden section.
 
 ### Agent steps
 
